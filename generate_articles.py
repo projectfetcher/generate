@@ -11,53 +11,55 @@ from sentence_transformers import SentenceTransformer, util
 # ===================================================================
 site_desc = """Jobs Mauritius is the leading online job portal in Mauritius, connecting employers with skilled talent across industries like IT, finance, tourism, and BPO. Featuring daily job listings, resume uploads, career advice, and company reviews, it helps Mauritian job seekers find local and remote opportunities fast."""
 
-# Or for a travel site:
-# site_desc = """WanderWorld is a travel inspiration platform featuring destination guides, budget tips, packing lists, and real traveler stories from over 100 countries."""
-
-# Or for e-commerce:
-# site_desc = """TechTrendz sells cutting-edge gadgets, laptops, and smart home devices with fast shipping, price match guarantee, and expert reviews."""
-
 NUM_ARTICLES = 15
 MIN_WORDS = 500
+VERBOSE = True  # Set to False for quiet mode
 # ===================================================================
 
 # -------------------------------------------------------------------
-# LOGGING
+# VERBOSE LOGGING
 # -------------------------------------------------------------------
-log_file = "blog_generator.log"
+log_file = "blog_generator_verbose.log"
 log_handle = open(log_file, "a", encoding="utf-8")
 
-def log(msg: str):
+def vlog(msg: str, level: str = "INFO"):
+    if not VERBOSE and level != "ERROR":
+        return
     timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] {msg}")
-    log_handle.write(f"[{timestamp}] {msg}\n")
+    prefix = f"[{timestamp}] [{level.ljust(5)}]"
+    print(f"{prefix} {msg}")
+    log_handle.write(f"{prefix} {msg}\n")
     log_handle.flush()
 
-log("Universal Blog Generator Started")
+vlog("Universal Blog Generator (VERBOSE MODE) Started", "INFO")
 
 # -------------------------------------------------------------------
-# LOAD MODELS (CPU)
+# LOAD MODELS (CPU) – with token count logging
 # -------------------------------------------------------------------
 device = torch.device("cpu")
+vlog(f"Using device: {device}", "INFO")
 
 # Title model
+vlog("Loading title generation model (Flan-T5-Large)...", "INFO")
 title_tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
 title_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-large")
 title_model.eval().to(device)
-log("Title model loaded")
+vlog("Title model loaded", "INFO")
 
 # Article model
+vlog("Loading article generation model (Flan-T5-Large)...", "INFO")
 article_tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
 article_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-large")
 article_model.eval().to(device)
-log("Article model loaded")
+vlog("Article model loaded", "INFO")
 
-# Similarity model (detect duplicate content)
+# Similarity model
+vlog("Loading similarity model (MiniLM-L6-v2)...", "INFO")
 sim_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-log("Similarity model loaded")
+vlog("Similarity model loaded", "INFO")
 
 # -------------------------------------------------------------------
-# STEP 1: GENERATE UNIQUE TITLES
+# STEP 1: GENERATE UNIQUE TITLES (VERBOSE)
 # -------------------------------------------------------------------
 def generate_titles(site_desc: str, n: int = 15) -> list:
     seen = set()
@@ -74,10 +76,18 @@ Rules:
 - Return **only** a numbered list: 1. Title... 2. Title...
 - No explanations, no intro, no extra text.
 """
-    log(f"Generating {n * 2} title candidates...")
+    vlog(f"Title prompt prepared ({len(prompt.split())} words)", "DEBUG")
+    vlog(f"Generating up to {n * 2} title candidates to ensure {n} unique...", "INFO")
 
+    attempt = 0
     while len(titles) < n:
+        attempt += 1
+        vlog(f"Title generation attempt #{attempt}", "INFO")
+
         inputs = title_tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+        input_ids = inputs["input_ids"]
+        vlog(f"Input tokens: {input_ids.shape[1]}", "DEBUG")
+
         with torch.no_grad():
             output = title_model.generate(
                 **inputs,
@@ -88,39 +98,55 @@ Rules:
                 repetition_penalty=1.3
             )
         raw = title_tokenizer.decode(output[0], skip_special_tokens=True)
+        vlog(f"Raw model output ({len(raw.split())} words):\n{raw[:500]}{'...' if len(raw) > 500 else ''}", "DEBUG")
 
+        new_count = 0
         for line in raw.split("\n"):
             line = line.strip()
             if not line or not re.match(r"^\d+\.", line):
                 continue
             candidate = re.split(r"^\d+\.\s*", line, 1)[-1].strip(' "')
-            if candidate and candidate not in seen:
-                seen.add(candidate)
-                titles.append(candidate)
-                log(f"Title [{len(titles)}/{n}]: {candidate}")
+            if not candidate:
+                continue
+
+            if candidate in seen:
+                vlog(f"Duplicate title skipped: {candidate}", "WARN")
+                continue
+
+            seen.add(candidate)
+            titles.append(candidate)
+            new_count += 1
+            vlog(f"Accepted title [{len(titles)}/{n}]: {candidate}", "INFO")
+
             if len(titles) >= n:
                 break
+
+        vlog(f"Added {new_count} new titles in this attempt", "INFO")
+
+    vlog(f"Successfully generated {len(titles)} unique titles", "INFO")
     return titles
 
 titles = generate_titles(site_desc, NUM_ARTICLES)
-log(f"Generated {len(titles)} unique titles")
 
 # -------------------------------------------------------------------
-# STEP 2: GENERATE UNIQUE ARTICLES (≥500 words)
+# STEP 2: GENERATE UNIQUE ARTICLES (VERBOSE + SIMILARITY LOG)
 # -------------------------------------------------------------------
 articles = []
 content_embeddings = []
 
-def is_duplicate_content(text: str, threshold: float = 0.88) -> bool:
+def is_duplicate_content(text: str, threshold: float = 0.88) -> tuple[bool, float]:
     if not content_embeddings:
-        return False
+        return False, 0.0
     emb = sim_model.encode(text, convert_to_tensor=True)
+    max_sim = 0.0
     for prev in content_embeddings:
-        if util.cos_sim(emb, prev) > threshold:
-            return True
-    return False
+        sim = util.cos_sim(emb, prev).item()
+        if sim > max_sim:
+            max_sim = sim
+    is_dup = max_sim > threshold
+    return is_dup, max_sim
 
-def generate_article(title: str) -> str:
+def generate_article(title: str, attempt: int = 1) -> str:
     prompt = f"""
 Write a high-quality, engaging blog post of at least {MIN_WORDS} words with this exact title:
 
@@ -138,9 +164,14 @@ Structure:
 
 Write naturally, conversationally, and for the target audience. Use bold **key phrases**.
 """
+    vlog(f"Article prompt for '{title}' ({len(prompt.split())} words)", "DEBUG")
+
     inputs = article_tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
+    input_tokens = inputs["input_ids"].shape[1]
+    vlog(f"Input tokens: {input_tokens}", "DEBUG")
 
     while True:
+        vlog(f"Generating article attempt #{attempt} for: {title}", "INFO")
         with torch.no_grad():
             output = article_model.generate(
                 **inputs,
@@ -151,23 +182,28 @@ Write naturally, conversationally, and for the target audience. Use bold **key p
                 repetition_penalty=1.2
             )
         text = article_tokenizer.decode(output[0], skip_special_tokens=True).strip()
-
         words = len(text.split())
+        vlog(f"Generated {words} words", "INFO")
+
         if words < MIN_WORDS:
-            log(f"  Too short ({words} words), retrying...")
+            vlog(f"Too short ({words} < {MIN_WORDS}), retrying...", "WARN")
+            attempt += 1
             continue
 
-        if is_duplicate_content(text):
-            log(f"  Duplicate content detected, regenerating...")
+        is_dup, sim_score = is_duplicate_content(text)
+        if is_dup:
+            vlog(f"Duplicate content detected (similarity: {sim_score:.3f}), regenerating...", "WARN")
+            attempt += 1
             continue
 
         # Save embedding
         emb = sim_model.encode(text, convert_to_tensor=True)
         content_embeddings.append(emb)
+        vlog(f"Article accepted: {words} words, similarity: {sim_score:.3f}", "INFO")
         return text
 
 # -------------------------------------------------------------------
-# MAIN GENERATION LOOP
+# MAIN GENERATION LOOP (VERBOSE PROGRESS)
 # -------------------------------------------------------------------
 progress = {"total": len(titles), "done": 0, "current": "", "percent": 0}
 
@@ -176,8 +212,9 @@ for idx, title in enumerate(titles, 1):
     progress.update({"current": title, "done": idx-1, "percent": int((idx-1)/len(titles)*100)})
     with open("progress.json", "w") as f:
         json.dump(progress, f)
+    vlog(f"Progress: {progress['done']}/{progress['total']} ({progress['percent']}%)", "INFO")
 
-    log(f"[{idx}/{len(titles)}] Generating article: {title}")
+    vlog(f"[{idx}/{len(titles)}] Generating article: {title}", "INFO")
     content = generate_article(title)
     word_count = len(content.split())
 
@@ -188,9 +225,9 @@ for idx, title in enumerate(titles, 1):
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S")
     })
 
-    log(f"  Done: {word_count} words")
+    vlog(f"Article saved: {word_count} words", "INFO")
 
-    # Update progress
+    # Final progress
     progress.update({"done": idx, "percent": int(idx/len(titles)*100)})
     with open("progress.json", "w") as f:
         json.dump(progress, f)
@@ -203,29 +240,34 @@ final_output = {
     "generated_on": time.strftime("%Y-%m-%d %H:%M:%S"),
     "total_articles": len(articles),
     "min_words_per_article": MIN_WORDS,
+    "verbose_mode": VERBOSE,
     "articles": articles
 }
 
 with open("blog_articles.json", "w", encoding="utf-8") as f:
     json.dump(final_output, f, indent=2, ensure_ascii=False)
+vlog("Saved: blog_articles.json", "INFO")
 
 with open("titles.txt", "w", encoding="utf-8") as f:
     for t in titles:
         f.write(t + "\n")
+vlog("Saved: titles.txt", "INFO")
 
 progress["percent"] = 100
 with open("progress.json", "w") as f:
     json.dump(progress, f)
+vlog("Progress: 100%", "INFO")
 
-log("All done! Files: blog_articles.json, titles.txt, progress.json")
+vlog("Pipeline completed successfully!", "INFO")
 log_handle.close()
 
 # -------------------------------------------------------------------
-# FINAL SUMMARY
+# FINAL VERBOSE SUMMARY
 # -------------------------------------------------------------------
-print("\n" + "="*70)
-print("GENERIC BLOG GENERATOR – COMPLETE")
-print(f"Site: {site_desc.split('.')[0][:50]}...")
+print("\n" + "="*80)
+print("VERBOSE BLOG GENERATOR – COMPLETE")
+print(f"Site: {site_desc.split('.')[0][:60]}...")
 print(f"Articles: {len(articles)} × ≥{MIN_WORDS} words")
-print(f"Output: blog_articles.json")
-print("="*70)
+print(f"Log: {log_file}")
+print(f"Output: blog_articles.json, titles.txt, progress.json")
+print("="*80)
