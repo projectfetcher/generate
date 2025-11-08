@@ -1,0 +1,42 @@
+name: Generate Blog Articles
+
+on:
+  workflow_dispatch:    # Allows manual trigger
+  push:
+    branches: [ main ]
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers sentence-transformers
+
+      - name: Run article generation
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          TOPICS: ${{ secrets.TOPICS }}
+          SITE_DESC: ${{ secrets.SITE_DESC }}
+        run: |
+          python generate_articles.py
+
+      - name: Upload articles
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-articles
+          path: |
+            articles.json
+            progress.json
+            logs.txt
