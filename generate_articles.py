@@ -21,9 +21,10 @@ log("AI Blog Generator Started – Flan-T5-Large + MiniLM (CPU)")
 
 # ---------- HARDCODED SITE DESCRIPTION ----------
 site_desc = (
-    "Mauritius.mimusjobs.com: Your gateway to top jobs in Mauritius. "
-    "Explore vacancies in tourism, finance, IT, and more from leading employers. "
-    "Post resumes, apply easily, and advance your career on the island."
+    "Mauritius.mimusjobs.com is a premier job portal dedicated to connecting talent with opportunities across Mauritius's thriving economy. "
+    "From IT roles in Ebene Cybercity to luxury hospitality positions in Grand Baie, the platform features thousands of verified listings in tourism, finance, tech, healthcare, and more. "
+    "Job seekers can upload resumes, build ATS-friendly profiles, and receive tailored job alerts, while employers benefit from advanced recruitment tools and company branding. "
+    "With a mobile-optimized interface, multilingual support (English, French, Kreol), and AI-powered matching, it empowers locals and expatriates alike to advance their careers in one of the Indian Ocean’s most dynamic job markets."
 )
 log(f"Site Description (hardcoded): {site_desc}")
 
@@ -37,112 +38,160 @@ model.eval()
 log("Flan-T5-Large loaded on CPU")
 
 # ---------- SENTENCE TRANSFORMER ----------
-log("Loading all-MiniLM-L6-v2 for title uniqueness...")
+log("Loading all-MiniLM-L6-v2 for uniqueness...")
 similarity_model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
 log("SentenceTransformer loaded")
 
+# ---------- GLOBAL RE-PETITION TRACKERS ----------
+seen_title_hashes   = set()
+seen_article_hashes = set()
+title_embeddings    = []
+article_embeddings  = []
+articles            = []  # final list to save
+
 # ---------- TITLE GENERATION ----------
 def generate_unique_titles(site_desc: str, num_titles: int = 15):
-    log(f"Generating {num_titles} unique blog titles for: {site_desc}")
+    log(f"Generating {num_titles} unique blog titles...")
+    all_titles = []
+
+    # --- Step 1: Generate more than needed ---
     prompt = (
-        f"Generate {num_titles} diverse, engaging, and unique blog post titles "
-        f"for a website described as '{site_desc}'. "
-        f"Each title should be 6-12 words, SEO-friendly, and cover different angles. "
-        f"Return only a numbered list. No duplicates. No explanations."
+        f"Generate {num_titles * 2} diverse, engaging, unique blog post titles "
+        f"for the site: '{site_desc}'. "
+        f"Each title 6-12 words, SEO-friendly, no duplicates. "
+        f"Return only a numbered list."
     )
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
     with torch.no_grad():
-        output = model.generate(
+        out = model.generate(
             **inputs,
-            max_new_tokens=500,
-            temperature=0.9,
+            max_new_tokens=800,
+            temperature=0.95,
             do_sample=True,
-            top_p=0.95,
-            repetition_penalty=1.2
+            top_p=0.96,
+            repetition_penalty=1.3,
         )
+    raw = tokenizer.decode(out[0], skip_special_tokens=True).strip()
+    log(f"Raw LLM titles:\n{raw}")
 
-    raw = tokenizer.decode(output[0], skip_special_tokens=True).strip()
-    log(f"Raw title output:\n{raw}")
-
-    # Parse titles
-    titles = []
+    # --- Step 2: Parse titles ---
     for line in raw.split("\n"):
         line = line.strip()
-        if line and any(c.isalnum() for c in line):
-            clean = line.split(".", 1)[-1].split(":", 1)[-1].strip(' "\'-')
-            if 6 <= len(clean.split()) <= 14:
-                titles.append(clean)
+        if not line or not any(c.isalnum() for c in line):
+            continue
+        clean = line.split(".", 1)[-1].split(":", 1)[-1].strip(' "\'-')
+        if 6 <= len(clean.split()) <= 12:
+            all_titles.append(clean)
 
-    # Deduplicate using cosine similarity
-    unique_titles = []
-    embeddings = []
-
-    for title in titles:
-        if len(unique_titles) >= num_titles:
-            break
-
-        emb = similarity_model.encode(title, convert_to_tensor=True)
-        if not embeddings:
-            unique_titles.append(title)
-            embeddings.append(emb)
+    # --- Step 3: Deduplicate with hash + cosine ---
+    unique = []
+    for t in all_titles:
+        h = hash(t.lower())
+        if h in seen_title_hashes:
+            continue
+        emb = similarity_model.encode(t, convert_to_tensor=True)
+        if title_embeddings and any(util.cos_sim(emb, e).item() > 0.88 for e in title_embeddings):
             continue
 
-        # Compare against all existing embeddings
-        sims = [util.cos_sim(emb, e).item() for e in embeddings]
-        if not any(s > 0.85 for s in sims):
-            unique_titles.append(title)
-            embeddings.append(emb)
+        unique.append(t)
+        seen_title_hashes.add(h)
+        title_embeddings.append(emb)
+        if len(unique) == num_titles:
+            break
 
-    # Fill remaining with variations
-    while len(unique_titles) < num_titles and unique_titles:
-        base = random.choice(unique_titles)
-        variation_prompt = (
-            f"Create a fresh, unique blog title variation of: \"{base}\". "
-            f"Keep same topic area for '{site_desc}' but change wording completely. "
-            f"6-12 words. No quotes."
+    # --- Step 4: Fill gaps with paraphrasing ---
+    while len(unique) < num_titles and unique:
+        base = random.choice(unique)
+        var_prompt = (
+            f"Paraphrase this title while keeping the same topic for '{site_desc}'. "
+            f"Original: \"{base}\". 6-12 words, completely different wording, no quotes."
         )
-        inputs = tokenizer(variation_prompt, return_tensors="pt").to(device)
+        inputs = tokenizer(var_prompt, return_tensors="pt").to(device)
         with torch.no_grad():
-            out = model.generate(**inputs, max_new_tokens=50, temperature=1.0, do_sample=True)
-        new_title = tokenizer.decode(out[0], skip_special_tokens=True).strip()
-        if 6 <= len(new_title.split()) <= 14:
-            emb = similarity_model.encode(new_title, convert_to_tensor=True)
-            sims = [util.cos_sim(emb, e).item() for e in embeddings]
-            if not any(s > 0.85 for s in sims):
-                unique_titles.append(new_title)
-                embeddings.append(emb)
+            out = model.generate(
+                **inputs,
+                max_new_tokens=40,
+                temperature=1.0,
+                do_sample=True,
+                top_p=0.94,
+                repetition_penalty=1.4,
+            )
+        new_t = tokenizer.decode(out[0], skip_special_tokens=True).strip()
+        if 6 <= len(new_t.split()) <= 12:
+            h = hash(new_t.lower())
+            if h not in seen_title_hashes:
+                emb = similarity_model.encode(new_t, convert_to_tensor=True)
+                if not any(util.cos_sim(emb, e).item() > 0.88 for e in title_embeddings):
+                    unique.append(new_t)
+                    seen_title_hashes.add(h)
+                    title_embeddings.append(emb)
 
-    return unique_titles[:num_titles]
+    log(f"Final unique titles ({len(unique)}):")
+    for t in unique:
+        log(f"  • {t}")
+    return unique[:num_titles]
 
 # ---------- ARTICLE GENERATION ----------
 def generate_article(title: str) -> str:
     log(f"Generating article: {title}")
+
+    # --- Build negative context from most similar prior article ---
+    prev_context = ""
+    if article_embeddings:
+        title_emb = similarity_model.encode(title, convert_to_tensor=True)
+        sims = [util.cos_sim(title_emb, e).item() for e in article_embeddings]
+        if sims:
+            most_sim_idx = sims.index(max(sims))
+            first_two = " ".join(articles[most_sim_idx]["content"].split(". ")[:2]) + "."
+            prev_context = f"Avoid repeating ideas from this previous post: \"{first_two}\" "
+
     prompt = (
-        f"Write a helpful, detailed blog post titled \"{title}\" "
-        f"for a site about {site_desc}. "
-        f"Include: introduction, 3–5 practical tips with examples, "
-        f"real-world scenario, and a strong conclusion. "
-        f"Use friendly, expert tone. Minimum 400 words. Natural paragraphs."
+        f"{prev_context}"
+        f"Write a fresh, detailed blog post titled \"{title}\" for the site: {site_desc}. "
+        f"Structure: introduction → 3–5 practical tips with Mauritius-specific examples → real-world scenario → strong conclusion. "
+        f"Friendly expert tone, 400+ words, natural paragraphs, no bullet lists."
     )
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(device)
-    with torch.no_grad():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=800,
-            temperature=0.8,
-            do_sample=True,
-            top_p=0.92,
-            repetition_penalty=1.15,
-            min_length=300
-        )
-    article = tokenizer.decode(output[0], skip_special_tokens=True).strip()
 
-    word_count = len(article.split())
-    if word_count < 100:
-        log(f"Warning: Article too short ({word_count} words). Regenerating...")
-        return generate_article(title)
+    for attempt in range(5):
+        with torch.no_grad():
+            out = model.generate(
+                **inputs,
+                max_new_tokens=900,
+                temperature=0.82,
+                do_sample=True,
+                top_p=0.93,
+                repetition_penalty=1.25,
+                min_length=350,
+                no_repeat_ngram_size=3,
+            )
+        article = tokenizer.decode(out[0], skip_special_tokens=True).strip()
+        wc = len(article.split())
 
-    log(f"Generated: {title} ({word_count} words)")
+        # --- Hash dedup ---
+        h = hash(article.lower()[:500])
+        if h in seen_article_hashes:
+            log(f"  Hash collision – retry {attempt+1}")
+            continue
+        seen_article_hashes.add(h)
+
+        # --- Embedding dedup ---
+        emb = similarity_model.encode(article, convert_to_tensor=True)
+        if article_embeddings and any(util.cos_sim(emb, e).item() > 0.80 for e in article_embeddings):
+            log(f"  Too similar to prior – retry {attempt+1}")
+            continue
+
+        # --- Word count guard ---
+        if wc < 400:
+            log(f"  Too short ({wc} words) – retry {attempt+1}")
+            continue
+
+        # --- Success ---
+        article_embeddings.append(emb)
+        log(f"  Article ready ({wc} words)")
+        return article
+
+    log("  All retries failed – returning last attempt")
     return article
 
 # ---------- MAIN LOOP ----------
@@ -150,10 +199,9 @@ try:
     topics = generate_unique_titles(site_desc, num_titles=15)
     log(f"Final {len(topics)} Unique Titles:\n" + "\n".join([f"- {t}" for t in topics]))
 
-    articles = []
     progress = {"total": len(topics), "done": 0, "current": "", "percent": 0}
-
     log("Starting article generation loop...")
+
     for i, title in enumerate(topics, 1):
         progress["current"] = title
         progress["done"] = i - 1
@@ -170,9 +218,9 @@ try:
         with open(progress_file, "w", encoding="utf-8") as f:
             json.dump(progress, f, ensure_ascii=False, indent=2)
 
+    # Save final articles
     with open(articles_file, "w", encoding="utf-8") as f:
         json.dump(articles, f, indent=2, ensure_ascii=False)
-
     log(f"{articles_file} saved with {len(articles)} articles")
 
     progress["percent"] = 100
@@ -180,12 +228,14 @@ try:
     with open(progress_file, "w", encoding="utf-8") as f:
         json.dump(progress, f, ensure_ascii=False, indent=2)
     log("progress.json set to 100%")
-
     log("All articles generated successfully!")
     print("SUCCESS")
 
 except Exception as e:
     log(f"ERROR: {str(e)}")
+    import traceback
+    log(traceback.format_exc())
     print("FAILED")
+
 finally:
     log_handle.close()
