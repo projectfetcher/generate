@@ -1,107 +1,122 @@
 # article_generator.py
-from transformers import pipeline
+from transformers import pipeline, set_seed
 import textwrap
 import random
 import re
 import os
+import torch
 
 # ================================================
-# CONFIGURATION – CHANGE ONLY THIS SECTION
+# CONFIGURATION
 # ================================================
+SITE_DESCRIPTION = (
+    "This website connects professionals and organizations through informative content "
+    "and valuable insights. It covers topics relevant to its target audience and aims "
+    "to inspire growth, learning, and collaboration."
+)
 
-# Paste your site description here (one sentence)
-SITE_DESCRIPTION = "Mauritius.MimusJobs.com is a specialized job portal dedicated to connecting employers and job seekers in Mauritius, featuring local vacancies in IT, finance, hospitality, and tourism with resume uploads and career tools."
-
-# Model choice (smaller = faster, larger = better)
 MODEL_NAME = "gpt2-medium"  # Options: gpt2, gpt2-medium, gpt2-large, distilgpt2
 
 # Generation settings
-MAX_LENGTH = 800
+MAX_NEW_TOKENS = 400
 TEMPERATURE = 0.85
 TOP_P = 0.92
 REPETITION_PENALTY = 1.1
 NUM_TOPICS_TO_GENERATE = 5
 SEED = None  # Set to int for reproducibility
 
-# Output folder
 OUTPUT_DIR = "generated_articles"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ================================================
-# END OF CONFIG – DO NOT EDIT BELOW
+# INITIALIZE MODEL
 # ================================================
+device = 0 if torch.cuda.is_available() and os.getenv("USE_GPU") else -1
+print(f"Device set to use {'GPU' if device == 0 else 'CPU'}")
 
 print(f"Loading model: {MODEL_NAME} ...")
 generator = pipeline(
     "text-generation",
     model=MODEL_NAME,
     tokenizer=MODEL_NAME,
-    device=0 if os.getenv("USE_GPU") else -1,
+    device=device,
     pad_token_id=50256
 )
 
+if SEED:
+    set_seed(SEED)
+    random.seed(SEED)
+
+# ================================================
+# UTILITIES
+# ================================================
 def clean_text(text: str) -> str:
+    """Remove incomplete last sentences and stray tokens."""
     text = text.strip()
-    # Remove incomplete last sentence
     sentences = re.split(r'(?<=[.!?])\s+', text)
-    if len(sentences) > 1 and not text.endswith(('.','!','?')):
+    if sentences and not text.endswith(('.', '!', '?')):
         sentences = sentences[:-1]
-    text = ' '.join(sentences)
+    text = ' '.join(sentences).strip()
     if text and text[-1] not in '.!?':
         text += '.'
     return text
 
+
 def generate_topics_from_description(description: str, n: int = 5) -> list[str]:
-    prompt = f"""Based on this website description, suggest {n} unique, engaging blog article titles that would attract its target audience:
+    """Generate a few potential blog post titles from the site description."""
+    prompt = (
+        f"Generate {n} unique and engaging blog article titles for a website with the following description:\n\n"
+        f"{description}\n\n"
+        f"Titles:\n"
+    )
 
-Description: {description}
-
-Article Titles:
-1. """
-    
     print("Generating article topics from site description...")
     output = generator(
         prompt,
-        max_length=200,
-        num_return_sequences=1,
+        max_new_tokens=120,
         temperature=0.8,
         top_p=0.9,
         do_sample=True,
-        truncation=True
+        repetition_penalty=1.05
     )[0]["generated_text"]
 
-    # Extract numbered list
-    raw = output.split("Article Titles:")[1].strip()
+    lines = re.split(r'[\n\r]+', output)
     titles = []
-    for line in raw.split('\n'):
-        match = re.match(r'^\d+\.\s*(.+)', line.strip())
-        if match:
-            title = match.group(1).strip(' "\'')
-            if title:
+    for line in lines:
+        m = re.match(r'^\s*(?:\d+[\).\s-]*)?["“”]*(.+?)["“”]*\s*$', line)
+        if m:
+            title = m.group(1).strip()
+            if len(title.split()) >= 3 and len(title) < 120 and not any(bad in title for bad in ['<', '>', '{', '}', '#']):
                 titles.append(title)
         if len(titles) >= n:
             break
-    return titles[:n] if titles else [f"Exploring {description.split()[0]} Opportunities"]
+
+    # If model fails completely, return minimal safe placeholders
+    if not titles:
+        titles = [f"Generated Article {i+1}" for i in range(n)]
+
+    return titles[:n]
+
 
 def generate_article(topic: str) -> str:
-    prompt = f"""# {topic}
-
-In today's fast-evolving landscape, {topic.lower()} plays a pivotal role. This article explores"""
+    """Generate a full article for a given topic."""
+    prompt = (
+        f"# {topic}\n\n"
+        f"In today's fast-evolving landscape, {topic.lower()} plays an important role. "
+        f"This article explores key insights, practical examples, and relevant ideas related to {topic.lower()}."
+    )
 
     print(f"  Generating: {topic}")
-    outputs = generator(
+    output = generator(
         prompt,
-        max_length=MAX_LENGTH,
-        num_return_sequences=1,
+        max_new_tokens=MAX_NEW_TOKENS,
         temperature=TEMPERATURE,
         top_p=TOP_P,
         repetition_penalty=REPETITION_PENALTY,
-        do_sample=True,
-        truncation=True
-    )
+        do_sample=True
+    )[0]["generated_text"]
 
-    raw = outputs[0]["generated_text"]
-    article_body = raw[len(prompt):].strip()
+    article_body = output[len(prompt):].strip()
     article_body = clean_text(article_body)
 
     wrapper = textwrap.TextWrapper(width=80, subsequent_indent="    ")
@@ -111,35 +126,28 @@ In today's fast-evolving landscape, {topic.lower()} plays a pivotal role. This a
             formatted_lines.append(wrapper.fill(line.strip()))
         else:
             formatted_lines.append("")
-    
+
     formatted_body = "\n".join(formatted_lines)
     return f"# {topic}\n\n{formatted_body}\n"
+
 
 # ================================================
 # MAIN EXECUTION
 # ================================================
-
 if __name__ == "__main__":
-    if SEED:
-        random.seed(SEED)
-
     print(f"Site: {SITE_DESCRIPTION}\n")
-    
-    # Step 1: Generate topics
+
     topics = generate_topics_from_description(SITE_DESCRIPTION, NUM_TOPICS_TO_GENERATE)
     print(f"Generated {len(topics)} topics:\n" + "\n".join(f"  • {t}" for t in topics) + "\n")
 
-    # Step 2: Generate articles
     for i, topic in enumerate(topics, 1):
         article = generate_article(topic)
-        
         safe_name = re.sub(r'[^\w\s-]', '', topic.lower())
         safe_name = re.sub(r'\s+', '_', safe_name)[:50]
         filename = f"{OUTPUT_DIR}/article_{i:02d}_{safe_name}.md"
-        
+
         with open(filename, "w", encoding="utf-8") as f:
             f.write(article)
-        
         print(f"  Saved: {filename}")
 
     print(f"\nAll {len(topics)} articles generated in '{OUTPUT_DIR}/'")
