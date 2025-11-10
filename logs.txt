@@ -1,0 +1,125 @@
+Starting AI post generation...
+AI Blog Generator Started – Flan-T5-Large + MiniLM (Universal)
+Site Description: Mauritius.mimusjobs.com is a premier job portal dedicated to connecting talent with opportunities across Mauritius's thr...
+Loading google/flan-t5-large ...
+Flan-T5-Large loaded on CPU
+Loading all-MiniLM-L6-v2 ...
+MiniLM loaded
+Generating 15 unique titles (no seed topics)...
+Generated 0 topic seeds from LLM
+  Title: Job Search Tips in Mauritius: - Search for jobs
+  Title: Career Change in Mauritius | Mauritius.mimusjobs.com
+  Title: How to Build an ATS-Friendly Resume in Mauritius
+  Title: interview prep: how to prepare for the interview
+FINAL 15 TITLES:
+  1. Job Search Tips in Mauritius: - Search for jobs
+  2. Career Change in Mauritius | Mauritius.mimusjobs.com
+  3. How to Build an ATS-Friendly Resume in Mauritius
+  4. interview prep: how to prepare for the interview
+  5. Mauritius Job Expo: What to Bring to the Interview
+  6. Interview Prep: How to Prepare for the Interview in Mauritius
+  7. Reviewing a resume for an interview in Mauritius
+  8. Mauritius.mimusjobs.com: Get the resume you need for a job interview
+  9. - Is it time to build your CV?
+  10. What to include on a resume for an interview in Mauritius
+  11. Mauritius Job Market: A Resume Guide for Mauritius
+  12. br>Mauritius.mimusjobs.com: Mauritius's Most Competitive Job Market
+  13. Mauritian resume guides: how to write an ATS-friendly resume
+  14. Why You Should Avoid the Same Mistakes As Everyone Else
+  15. Why You Should Leave Out the Language
+Starting article generation...
+Generating article: Job Search Tips in Mauritius: - Search for jobs
+  Using last attempt
+Generating article: Career Change in Mauritius | Mauritius.mimusjobs.com
+  Using last attempt
+Generating article: How to Build an ATS-Friendly Resume in Mauritius
+  Using last attempt
+Generating article: interview prep: how to prepare for the interview
+  Article ready (469 words)
+Generating article: Mauritius Job Expo: What to Bring to the Interview
+  Using last attempt
+Generating article: Interview Prep: How to Prepare for the Interview in Mauritius
+  Using last attempt
+Generating article: Reviewing a resume for an interview in Mauritius
+  Article ready (450 words)
+Generating article: Mauritius.mimusjobs.com: Get the resume you need for a job interview
+  Using last attempt
+Generating article: - Is it time to build your CV?
+  Using last attempt
+Generating article: What to include on a resume for an interview in Mauritius
+  Article ready (438 words)
+Generating article: Mauritius Job Market: A Resume Guide for Mauritius
+  Using last attempt
+Generating article: br>Mauritius.mimusjobs.com: Mauritius's Most Competitive Job Market
+  Using last attempt
+Generating article: Mauritian resume guides: how to write an ATS-friendly resume
+  Article ready (437 words)
+Generating article: Why You Should Avoid the Same Mistakes As Everyone Else
+  Article ready (432 words)
+Generating article: Why You Should Leave Out the Language
+  Using last attempt
+SAVED 15 articles → articles.json
+SUCCESS: All done!
+AI Blog Generator Started – Flan-T5-Large + MiniLM (Universal)
+Site Description: Mauritius.mimusjobs.com is a premier job portal dedicated to connecting talent with opportunities across Mauritius's thr...
+Loading google/flan-t5-large ...
+Flan-T5-Large loaded on CPU
+Loading all-MiniLM-L6-v2 ...
+MiniLM loaded
+Generating 15 unique titles (no seed topics)...
+Generated 0 topic seeds from LLM
+  Title: Job Search Tips in Mauritius: - Search for jobs
+  Title: Career Change in Mauritius | Mauritius.mimusjobs.com
+  Title: How to Build an ATS-Friendly Resume in Mauritius
+  Title: interview prep: how to prepare for the interview
+FINAL 15 TITLES:
+  1. Job Search Tips in Mauritius: - Search for jobs
+  2. Career Change in Mauritius | Mauritius.mimusjobs.com
+  3. How to Build an ATS-Friendly Resume in Mauritius
+  4. interview prep: how to prepare for the interview
+  5. Mauritius Job Expo: What to Bring to the Interview
+  6. Interview Prep: How to Prepare for the Interview in Mauritius
+  7. Reviewing a resume for an interview in Mauritius
+  8. Mauritius.mimusjobs.com: Get the resume you need for a job interview
+  9. - Is it time to build your CV?
+  10. What to include on a resume for an interview in Mauritius
+  11. Mauritius Job Market: A Resume Guide for Mauritius
+  12. br>Mauritius.mimusjobs.com: Mauritius's Most Competitive Job Market
+  13. Mauritian resume guides: how to write an ATS-friendly resume
+  14. Why You Should Avoid the Same Mistakes As Everyone Else
+  15. Why You Should Leave Out the Language
+Starting article generation...
+Generating article: Job Search Tips in Mauritius: - Search for jobs
+  Using last attempt
+Generating article: Career Change in Mauritius | Mauritius.mimusjobs.com
+  Using last attempt
+Generating article: How to Build an ATS-Friendly Resume in Mauritius
+  Using last attempt
+Generating article: interview prep: how to prepare for the interview
+  Article ready (469 words)
+Generating article: Mauritius Job Expo: What to Bring to the Interview
+  Using last attempt
+Generating article: Interview Prep: How to Prepare for the Interview in Mauritius
+  Using last attempt
+Generating article: Reviewing a resume for an interview in Mauritius
+  Article ready (450 words)
+Generating article: Mauritius.mimusjobs.com: Get the resume you need for a job interview
+  Using last attempt
+Generating article: - Is it time to build your CV?
+  Using last attempt
+Generating article: What to include on a resume for an interview in Mauritius
+  Article ready (438 words)
+Generating article: Mauritius Job Market: A Resume Guide for Mauritius
+  Using last attempt
+Generating article: br>Mauritius.mimusjobs.com: Mauritius's Most Competitive Job Market
+  Using last attempt
+Generating article: Mauritian resume guides: how to write an ATS-friendly resume
+  Article ready (437 words)
+Generating article: Why You Should Avoid the Same Mistakes As Everyone Else
+  Article ready (432 words)
+Generating article: Why You Should Leave Out the Language
+  Using last attempt
+SAVED 15 articles → articles.json
+SUCCESS: All done!
+SUCCESS
+Generation complete.
