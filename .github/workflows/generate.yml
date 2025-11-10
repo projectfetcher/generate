@@ -34,7 +34,7 @@ jobs:
           SITE_DESC: "Mauritius.mimusjobs.com: Your gateway to top jobs in Mauritius. Explore vacancies in tourism, finance, IT, and more from leading employers. Post resumes, apply easily, and advance your career on the island."
         run: |
           echo "Starting AI post generation..." > logs.txt
-          python generate_posts.py | tee -a logs.txt
+          python generate_articles.py | tee -a logs.txt
           echo "Generation complete." >> logs.txt
 
       - name: Commit generated files
